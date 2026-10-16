@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>HauntAI — The Ghost Learns. You Survive.</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#0c0a0b;--card:#17131a;--ink:#d9d2cf;--mut:#8b8286;--red:#b3262e;--amb:#d9a441;--grn:#5fa37a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Georgia,'Times New Roman',serif}
+body{max-width:1100px;margin:0 auto;padding:10px}
+h1{font:700 26px Georgia,serif;margin:0;letter-spacing:.5px}h1 span{color:var(--red)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.sub{color:var(--mut);font-style:italic}
+button{background:var(--card);color:var(--ink);border:1px solid #3a2a30;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button:hover,button:focus-visible{border-color:var(--red);outline:none}button.p{background:var(--red);border-color:var(--red);color:#fff}
+.wrap{display:grid;grid-template-columns:1fr 290px;gap:10px}@media(max-width:860px){.wrap{grid-template-columns:1fr}}
+.stage{position:relative}canvas{width:100%;height:auto;display:block;background:#050405;border:1px solid #2a1c22;border-radius:10px}
+.hud{display:flex;gap:12px;flex-wrap:wrap;margin:6px 0;font-size:13px;color:var(--mut)}
+.bar{display:inline-block;width:90px;height:8px;background:#2a2226;border-radius:4px;vertical-align:middle;overflow:hidden}.bar i{display:block;height:100%}
+.side{background:var(--card);border:1px solid #2a1c22;border-radius:10px;padding:10px;font-size:13px}
+.side h3{margin:0 0 6px;font-size:14px}.log{max-height:170px;overflow:auto;border-top:1px solid #2a1c22;margin-top:6px;padding-top:6px}
+.log div{margin-bottom:5px;color:var(--mut)}.log b{color:var(--ink)}
+.ov{position:absolute;inset:0;background:rgba(8,6,8,.93);border-radius:10px;padding:18px;overflow:auto;display:none}
+.ov.on{display:block}.ov h2{margin:0 0 6px}
+.row{display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px}.row span:first-child{width:78px}.row .b{height:10px;background:var(--red);border-radius:3px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:10px 0}.g div{background:var(--card);border-radius:8px;padding:8px}.g b{display:block;font-size:20px}
+.tag{color:var(--amb)}table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:4px;border-bottom:1px solid #2a1c22}
+#tp{display:none;gap:6px;justify-content:space-between;margin-top:8px}@media(pointer:coarse){#tp{display:flex}}#tp button{padding:14px 12px;touch-action:none}
+</style></head><body>
+<div class="top"><div><h1>Haunt<span>AI</span></h1><div class="sub">The Ghost Learns. You Survive.</div></div>
+<div><button id="bDash">Analytics</button> <button id="bAI">AI view: off</button></div></div>
+<div class="wrap"><div>
+<div class="stage"><canvas id="c" width="800" height="540"></canvas>
+<div class="ov on" id="menu"><h2>HauntAI — Adaptive AI Horror House</h2>
+<p>A ghost hunts you through a dark house. It remembers where you hide and which rooms you favour, then searches there more often. Play a few rounds and watch it adapt.</p>
+<p><b>Goal:</b> find the <span class="tag">Storage Key</span> in the Kitchen, open the Storage Room, take the <span class="tag">Exit Key</span>, then reach the Exit. A hidden <span class="tag">Music Box</span> in the Bathroom unlocks a secret ending.</p>
+<p><b>Controls:</b> WASD/arrows move · Shift run · E pick up · H hide near a furniture spot · X toggle AI view. Running makes noise.</p>
+<button class="p" id="bStart">Start game</button> <button id="bDemo">Load demo profile</button></div>
+<div class="ov" id="res"></div><div class="ov" id="dash"></div></div>
+<div class="hud"><span>Room: <b id="hRoom">-</b></span><span>Fear <span class="bar"><i id="hFear" style="background:var(--red)"></i></span></span><span>Stamina <span class="bar"><i id="hSt" style="background:var(--grn)"></i></span></span><span>Noise: <b id="hNoise">quiet</b></span><span>Items: <b id="hInv">none</b></span><span id="hMsg" class="tag"></span></div>
+<div id="tp"><div><button data-k="a">◀</button><button data-k="w">▲</button><button data-k="s">▼</button><button data-k="d">▶</button></div><div><button data-k="shift">Run</button><button data-k="e">E</button><button data-k="h">Hide</button></div></div>
+</div>
+<div class="side"><h3>Ghost brain</h3><div>State: <b id="gState">-</b><br>Adaptation: <b id="gAd">-</b></div>
+<div class="log" id="probs"></div><h3 style="margin-top:8px">Decision log</h3><div class="log" id="log" style="border:0"></div></div></div>
+<script>
+const $=i=>document.getElementById(i),cv=$('c'),g=cv.getContext('2d');
+const RM={storage:[20,20,240,160],bedroom:[280,20,240,160],bathroom:[540,20,240,160],kitchen:[20,200,240,160],hallway:[280,200,240,160],living:[540,200,240,160],exit:[280,380,240,150]};
+const DR=[['storage','bedroom',260,80,20,40],['bedroom','bathroom',520,80,20,40],['storage','kitchen',120,180,40,20],['bedroom','hallway',380,180,40,20],['bathroom','living',640,180,40,20],['kitchen','hallway',260,260,20,40],['hallway','living',520,260,20,40],['hallway','exit',380,360,40,20]];
+const SP=[{id:'cupboard',room:'bedroom',x:490,y:50},{id:'bed',room:'bedroom',x:310,y:150},{id:'pantry',room:'kitchen',x:45,y:225},{id:'tub',room:'bathroom',x:750,y:150},{id:'sofa',room:'living',x:570,y:330},{id:'locker',room:'storage',x:235,y:45}];
+const IT=[{id:'key',n:'Storage Key',x:70,y:320},{id:'exitkey',n:'Exit Key',x:60,y:60},{id:'music',n:'Music Box',x:725,y:50}];
+const inR=(x,y,r)=>x>=r[0]&&x<=r[0]+r[2]&&y>=r[1]&&y<=r[1]+r[3];
+const rc=r=>[r[0]+r[2]/2,r[1]+r[3]/2],dC={},adj={};
+DR.forEach(d=>{const c=[d[2]+d[4]/2,d[3]+d[5]/2];dC[d[0]+'|'+d[1]]=c;dC[d[1]+'|'+d[0]]=c;(adj[d[0]]=adj[d[0]]||[]).push(d[1]);(adj[d[1]]=adj[d[1]]||[]).push(d[0])});
+function roomOf(x,y){for(const k in RM)if(inR(x,y,RM[k]))return k;for(const d of DR)if(inR(x,y,d.slice(2)))return d[0];return 'hallway'}
+function route(ax,ay,bx,by){const a=roomOf(ax,ay),b=roomOf(bx,by);if(a===b)return[[bx,by]];const q=[[a]],seen={[a]:1};let p;while(q.length){const c=q.shift(),l=c[c.length-1];if(l===b){p=c;break}adj[l].forEach(n=>{if(!seen[n]){seen[n]=1;q.push([...c,n])}})}
+ const o=[];for(let i=0;i<p.length-1;i++){o.push(dC[p[i]+'|'+p[i+1]],rc(RM[p[i+1]]))}o.push([bx,by]);return o}
+// ---- persistence
+const KEY='haunt_v1';let P;function load(){try{P=JSON.parse(localStorage.getItem(KEY))}catch(e){}P=P||{games:0,esc:0,cap:0,best:0,hides:{},rooms:{},run:0,steps:0,noise:0,hist:[],demo:false}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(P))}catch(e){}}load();
+const adaptScore=()=>{const h=Object.values(P.hides).reduce((a,v)=>a+v.n,0),r=Object.values(P.rooms).reduce((a,v)=>a+v,0);return Math.min(100,Math.round((h+r/4+P.games*2)*6))};
+const lvl=s=>s<=30?'Low':s<=60?'Medium':s<=80?'High':'Very High';
+function ptype(o){const sc={Hider:o.hides/3,Runner:(o.run/(o.steps||1))/.4,Explorer:Object.keys(o.rooms).length/6,'Noisy Player':o.noises/8};let b='Balanced',m=.5;for(const k in sc)if(sc[k]>m){m=sc[k];b=k}return b}
+// ---- game
+let s=null,K={},ai=false,last=0;const toast=(t)=>{$('hMsg').textContent=t;clearTimeout(toast.t);toast.t=setTimeout(()=>$('hMsg').textContent='',2500)};
+function start(){["menu","res","dash"].forEach(i=>$(i).classList.remove('on'));
+ s={t:0,p:{x:400,y:280,st:100,fear:0,hid:null,hs:0},gh:{x:660,y:100,st:'PATROL',path:[],wait:4,tgt:null,left:0,seen:0,last:[400,280],ct:0},inv:{},got:{},nt:0,nz:0,nzL:0,cur:'hallway',over:false,ev:{next:20,dark:0,flick:0},log:[],
+ st:{hides:0,found:0,run:0,steps:0,noises:0,searches:0,enc:0,rooms:{hallway:1}},gameNo:P.games+1};$('log').innerHTML='';$('hInv').textContent='none';sync()}
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function adapt(){const a=adaptScore()/100*.85;return a*Math.min(1,s.t/90)} // limited + ramps up through the game
+function probs(from){const a=adapt(),N=SP.length;const sc=SP.map(sp=>{const h=P.hides[sp.id]||{n:0,f:0,last:s.gameNo},live=0;const rec=Math.pow(.85,s.gameNo-h.last);return h.n*rec*(1+(1-h.f/Math.max(1,h.n))*.5)});
+ const sum=sc.reduce((x,y)=>x+y,0);return SP.map((sp,i)=>{let p=(1-a)/N+(sum>0?a*sc[i]/sum:a/N);if(from)p*=1/(1+Math.hypot(sp.x-from.x,sp.y-from.y)/350);return p})}
+function pick(from){const pr=probs(from),t=pr.reduce((x,y)=>x+y,0);let r=Math.random()*t,i=0;while(i<pr.length-1&&(r-=pr[i])>0)i++;return{sp:SP[i],conf:pr[i]/t}}
+function log(type,reason,conf){s.log.unshift(1);const d=document.createElement('div');d.innerHTML=`<b>${type}</b> (${conf.toFixed(2)})<br>${reason}`;$('log').prepend(d);while($('log').children.length>12)$('log').lastChild.remove()}
+function goTo(x,y){s.gh.path=route(s.gh.x,s.gh.y,x,y)}
+function noise(x,y,l,why){const r=[0,80,150,220,300][l];s.nz=l;s.nzL=1;if(l>1)s.st.noises++;const gh=s.gh;
+ if(gh.st!=='CHASE'&&Math.hypot(gh.x-x,gh.y-y)<r&&(l>1||Math.random()<.3)){gh.st='INVESTIGATE';goTo(x+(Math.random()-.5)*60,y+(Math.random()-.5)*60);log('INVESTIGATE '+roomOf(x,y).toUpperCase(),why||'Noise heard nearby (approximate source).',Math.min(.95,.4+l*.12))}}
+function blocked(x,y){const sr=RM.storage;if(!s.inv.key&&(inR(x,y,sr)||DR.some(d=>(d[0]==='storage'||d[1]==='storage')&&inR(x,y,d.slice(2)))))return 'Storage door is locked.';
+ if(!s.inv.exitkey&&(inR(x,y,RM.exit)||inR(x,y,[380,360,40,20])))return 'The exit is locked.';return null}
+const okp=(x,y)=>[[-6,-6],[6,-6],[-6,6],[6,6]].every(([a,b])=>Object.values(RM).some(r=>inR(x+a,y+b,r))||DR.some(d=>inR(x+a,y+b,d.slice(2))));
+function sees(){const p=s.p,gh=s.gh;if(p.hid)return false;return roomOf(gh.x,gh.y)===roomOf(p.x,p.y)&&dist(gh,p)<(s.ev.dark>0?150:270)}
+function mv(o,sp,k){const q=o.path[0];if(!q)return;const dx=q[0]-o.x,dy=q[1]-o.y,d=Math.hypot(dx,dy);if(d<sp*k+1){o.x=q[0];o.y=q[1];o.path.shift()}else{o.x+=dx/d*sp*k;o.y+=dy/d*sp*k}}
+function upd(dt){const p=s.p,gh=s.gh,k=dt*60,a=adapt();s.t+=dt;
+ const dx=(K.d||K.arrowright?1:0)-(K.a||K.arrowleft?1:0),dy=(K.s||K.arrowdown?1:0)-(K.w||K.arrowup?1:0),moving=!p.hid&&(dx||dy);let run=false;
+ if(moving){run=K.shift&&p.st>0;const sp=(run?3.2:2)*k,l=Math.hypot(dx,dy);for(const[ax,ay]of[[dx/l*sp,dy/l*sp],[dx/l*sp,0],[0,dy/l*sp]]){const nx=p.x+ax,ny=p.y+ay;if(okp(nx,ny)){const b=blocked(nx,ny);if(b){toast(b);continue}p.x=nx;p.y=ny;break}}
+  s.st.steps++;if(run){s.st.run++;p.st-=.7*k}s.nt-=dt;if(s.nt<=0){s.nt=.5;noise(p.x,p.y,run?3:1,run?'Running noise detected.':'Footsteps heard.')}}
+ if(!run)p.st=Math.min(100,p.st+.35*k);if(s.nzL>0)s.nzL-=dt*1.2;
+ const cur=roomOf(p.x,p.y);if(cur!==s.cur){s.cur=cur;s.st.rooms[cur]=(s.st.rooms[cur]||0)+1}
+ // ghost
+ const see=sees();if(see){gh.seen=0;gh.last=[p.x,p.y];if(gh.st!=='CHASE'){gh.st='CHASE';s.st.enc++;gh.ct=0;log('CHASE','Ghost directly detected the player.',.95)}}
+ if(gh.st==='PATROL'){if(gh.path.length)mv(gh,1.2,k);else if((gh.wait-=dt)<=0){const rooms=Object.keys(RM).filter(r=>r!=='exit'&&r!==roomOf(gh.x,gh.y)),tot=Object.values(P.rooms).reduce((x,y)=>x+y,0)||1,w=rooms.map(r=>1+a*8*((P.rooms[r]||0)/tot));let r=Math.random()*w.reduce((x,y)=>x+y,0),i=0;while(i<w.length-1&&(r-=w[i])>0)i++;const c=rc(RM[rooms[i]]);goTo(c[0],c[1]);gh.wait=1.5;
+   if(w[i]>1.5)log('PATROL '+rooms[i].toUpperCase(),`Player visits ${rooms[i]} often (${P.rooms[rooms[i]]||0} times).`,w[i]/w.reduce((x,y)=>x+y,0));}}
+ else if(gh.st==='INVESTIGATE'){if(gh.path.length)mv(gh,1.6,k);else{gh.st='SEARCH';gh.left=2+(a>.4?1:0)}}
+ else if(gh.st==='SEARCH'){if(gh.path.length)mv(gh,1.5,k);else if(gh.tgt){if(p.hid===gh.tgt.id){p.hid=null;s.st.found++;rec(gh.tgt.id,true);return end('captured',`The ghost opened the ${gh.tgt.id} and found you.`)}gh.tgt=null}
+  else if(gh.left>0){gh.left--;const c=pick(gh),n=Math.round(adapt()*100);gh.tgt=c.sp;goTo(c.sp.x,c.sp.y);s.st.searches++;const h=P.hides[c.sp.id];log('SEARCH '+c.sp.id.toUpperCase(),h&&a>.05?`Player has used ${c.sp.id} ${h.n} time(s); adaptation ${n}%.`:'Checking likely hiding spots (little data yet).',c.conf)}
+  else{gh.st='PATROL';gh.wait=2}}
+ else if(gh.st==='CHASE'){const t=see?p:{x:gh.last[0],y:gh.last[1]};gh.ct-=dt;if(gh.ct<=0){gh.ct=.3;goTo(t.x,t.y)}mv(gh,2+a*.2,k);if(!see){gh.seen+=dt;if(gh.seen>3){gh.st='LOST';gh.wait=1.5;gh.path=[];log('LOST','Player escaped detection range.',.6)}}}
+ else if(gh.st==='LOST'){if((gh.wait-=dt)<=0){gh.st='SEARCH';gh.left=2+(a>.4?1:0);goTo(gh.last[0],gh.last[1]);gh.tgt=null}}
+ if(!p.hid&&dist(gh,p)<16)return end('captured','The ghost caught you in the dark.');
+ // fear
+ if(p.hid)p.fear+=dt*2.5;else if(gh.st==='CHASE')p.fear+=dt*7;else if(dist(gh,p)<180&&roomOf(gh.x,gh.y)===s.cur)p.fear+=dt*4;else p.fear-=dt*3;p.fear=Math.max(0,Math.min(100,p.fear));if(p.fear>=100)return end('captured','Fear overwhelmed you.');
+ // random events
+ if((s.ev.next-=dt)<=0){s.ev.next=18+Math.random()*17;const e=Math.floor(Math.random()*3);if(e===0){s.ev.dark=7;toast('The lights go out...')}else if(e===1){const rs=Object.keys(RM).filter(r=>r!=='exit'),r=rs[Math.floor(Math.random()*rs.length)],c=rc(RM[r]);toast('A door slams somewhere...');noise(c[0],c[1],4,'Random event: door slam in '+r+'.')}else{s.ev.flick=2;toast('The light flickers.')}}
+ s.ev.dark-=dt;s.ev.flick-=dt;
+ // exit
+ if(s.cur==='exit'&&p.y>420)return end(s.inv.music?'secret':'escape',s.inv.music?'You escaped carrying the Music Box. It begins to play on its own...':'You unlocked the exit and escaped.');
+ sync()}
+function rec(id,found){const h=P.hides[id]=P.hides[id]||{n:0,f:0,last:s.gameNo};if(found)h.f++}
+function act(key){if(!s||s.over)return;const p=s.p;
+ if(key==='h'){if(p.hid){p.hid=null;toast('You leave the hiding spot.');return}const sp=SP.find(q=>Math.hypot(q.x-p.x,q.y-p.y)<34);if(!sp){toast('No hiding spot nearby.');return}p.hid=sp.id;p.x=sp.x;p.y=sp.y;s.st.hides++;const h=P.hides[sp.id]=P.hides[sp.id]||{n:0,f:0,last:s.gameNo};h.n++;h.last=s.gameNo;toast('Hiding in the '+sp.id+'. Press H to leave.')}
+ if(key==='e'&&!p.hid){const it=IT.find(i=>!s.got[i.id]&&Math.hypot(i.x-p.x,i.y-p.y)<34);if(!it){toast('Nothing to pick up.');return}s.got[it.id]=1;s.inv[it.id]=1;noise(p.x,p.y,2,'Item picked up nearby.');$('hInv').textContent=IT.filter(i=>s.inv[i.id]).map(i=>i.n).join(', ');toast('Picked up: '+it.n)}}
+function end(kind,why){if(s.over)return;s.over=true;const st=s.st,T=Math.round(s.t);const hold={hides:st.hides,run:st.run,steps:st.steps,rooms:st.rooms,noises:st.noises};
+ const pt=ptype(hold);P.games++;if(kind==='captured')P.cap++;else P.esc++;if(T>P.best)P.best=T;for(const r in st.rooms)P.rooms[r]=(P.rooms[r]||0)+st.rooms[r];P.run+=st.run;P.steps+=st.steps;P.noise+=st.noises;
+ const sc=adaptScore();P.hist.unshift({k:kind,t:T,pt,ad:sc,d:new Date().toLocaleDateString()});P.hist=P.hist.slice(0,10);save();
+ const titles={escape:'Ending 1 — Escape',captured:'Ending 2 — Captured',secret:'Ending 3 — Secret: The Music Box'};
+ const top=Object.entries(P.hides).sort((a,b)=>b[1].n-a[1].n)[0];
+ $('res').innerHTML=`<h2>${titles[kind]}</h2><p>${why}</p><div class="g"><div>Survival<b>${T}s</b></div><div>Hides<b>${st.hides}</b></div><div>Ghost searches<b>${st.searches}</b></div><div>Encounters<b>${st.enc}</b></div></div>
+ <h3>AI adaptation report</h3><p>Detected player type: <b class="tag">${pt}</b> · Adaptation: <b class="tag">${sc}% (${lvl(sc)})</b><br>Most used hiding spot: <b>${top?top[0]+' ('+top[1].n+' times)':'none yet'}</b><br>Ghost strategy: <b>${top&&sc>10?'Higher search probability for '+top[0]:'Still gathering data — mostly exploring'}</b></p>${bars(Object.fromEntries(Object.entries(P.hides).map(([k,v])=>[k,v.n])),'Lifetime hiding spots')}<p><button class="p" id="again">Play again</button> <button id="toDash">Analytics</button></p>`;
+ $('res').classList.add('on');$('again').onclick=start;$('toDash').onclick=dash}
+function bars(o,t){const m=Math.max(1,...Object.values(o));const e=Object.entries(o).sort((a,b)=>b[1]-a[1]);return `<h3>${t}</h3>`+(e.length?e.map(([k,v])=>`<div class="row"><span>${k}</span><span class="b" style="width:${v/m*60+2}%"></span><span>${v}</span></div>`).join(''):'<p class="sub">No data yet — play a round.</p>')}
+function dash(){const sc=adaptScore(),lt=ptype({hides:Object.values(P.hides).reduce((a,v)=>a+v.n,0),run:P.run,steps:P.steps,rooms:P.rooms,noises:P.noise}),top=Object.entries(P.hides).sort((a,b)=>b[1].n-a[1].n)[0],rm=Object.entries(P.rooms).sort((a,b)=>b[1]-a[1])[0];
+ $('dash').innerHTML=`<h2>Analytics ${P.demo?'<span class="tag">(includes DEMO data)</span>':''}</h2><div class="g"><div>Games<b>${P.games}</b></div><div>Escapes<b>${P.esc}</b></div><div>Captures<b>${P.cap}</b></div><div>Best time<b>${P.best}s</b></div><div>Top hide<b>${top?top[0]:'-'}</b></div><div>Top room<b>${rm?rm[0]:'-'}</b></div><div>Player type<b>${lt}</b></div><div>AI adaptation<b>${sc}%</b></div></div>
+ ${bars(Object.fromEntries(Object.entries(P.hides).map(([k,v])=>[k,v.n])),'Hiding locations')}${bars(P.rooms,'Room visits')}<h3>Recent games</h3>${P.hist.length?'<table><tr><th>Date</th><th>Ending</th><th>Time</th><th>Type</th><th>AI</th></tr>'+P.hist.map(h=>`<tr><td>${h.d}</td><td>${h.k}</td><td>${h.t}s</td><td>${h.pt}</td><td>${h.ad}%</td></tr>`).join('')+'</table>':'<p class="sub">No games yet.</p>'}
+ <p><button id="dc">Close</button> <button id="dr">Reset all data</button></p>`;$('dash').classList.add('on');$('dc').onclick=()=>{$('dash').classList.remove('on')};$('dr').onclick=()=>{try{localStorage.removeItem(KEY)}catch(e){}load();dash()}}
+function sync(){const p=s.p;$('hRoom').textContent=s.cur;$('hFear').style.width=p.fear+'%';$('hSt').style.width=p.st+'%';$('hNoise').textContent=s.nzL>0?['quiet','low','medium','loud','very loud'][s.nz]:'quiet';$('gState').textContent=ai||s.over?s.gh.st:'hidden (press X)';const a=Math.round(adapt()*100);$('gAd').textContent=a+'% (cap 85%)';
+ if(ai||s.over){const pr=probs(null),t=pr.reduce((x,y)=>x+y,0);$('probs').innerHTML='Search probability:<br>'+SP.map((q,i)=>`${q.id}: ${(pr[i]/t).toFixed(2)}`).join(' · ')}else $('probs').textContent='Search probabilities hidden. Toggle AI view.'}
+// ---- draw
+function draw(){g.fillStyle='#050405';g.fillRect(0,0,800,540);if(!s){return}
+ for(const k in RM){const r=RM[k];g.fillStyle=k==='exit'?'#1a1512':'#16121a';g.fillRect(...r);g.strokeStyle='#3d2c33';g.lineWidth=2;g.strokeRect(...r);g.fillStyle='#4b3d44';g.font='12px Georgia';g.fillText(k==='exit'?'EXIT':k,r[0]+8,r[1]+16)}
+ g.fillStyle='#16121a';DR.forEach(d=>g.fillRect(d[2],d[3],d[4],d[5]));
+ if(!s.inv.key){g.fillStyle='#6b2a2e';[[260,80,20,40],[120,180,40,20]].forEach(r=>g.fillRect(...r))}if(!s.inv.exitkey){g.fillStyle='#6b2a2e';g.fillRect(380,360,40,20)}
+ SP.forEach(q=>{g.fillStyle='#3a2a1e';g.fillRect(q.x-14,q.y-14,28,28);g.fillStyle='#8a6a4a';g.font='10px Georgia';g.fillText(q.id,q.x-14,q.y+26)});
+ IT.forEach(i=>{if(!s.got[i.id]){g.fillStyle='#d9a441';g.beginPath();g.arc(i.x,i.y,6,0,7);g.fill()}});
+ const p=s.p,gh=s.gh,fl=s.ev.flick>0&&Math.random()<.5;
+ const gv=ai||sees()||gh.st==='CHASE';
+ if(!p.hid){g.fillStyle='#e8e2dc';g.beginPath();g.arc(p.x,p.y,8,0,7);g.fill()}
+ // darkness
+ const R=s.ev.dark>0?85:fl?60:160;const gr=g.createRadialGradient(p.x,p.y,25,p.x,p.y,R);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,.96)');g.fillStyle=gr;g.fillRect(0,0,800,540);
+ const near=dist(gh,p)<R||gv&&ai;if(near||gh.st==='CHASE'&&dist(gh,p)<R+40){g.globalAlpha=ai&&dist(gh,p)>=R?.55:.9;g.fillStyle=gh.st==='CHASE'?'#e86a6a':'#cfd6e6';g.beginPath();g.arc(gh.x,gh.y,12,0,7);g.fill();g.fillStyle='#000';g.fillRect(gh.x-6,gh.y-3,3,4);g.fillRect(gh.x+3,gh.y-3,3,4);g.globalAlpha=1}
+ if(p.hid){g.strokeStyle='#d9a441';g.beginPath();g.arc(p.x,p.y,10,0,7);g.stroke()}
+ if(s.nzL>0){g.strokeStyle='rgba(217,164,65,'+Math.max(0,s.nzL)*.5+')';g.beginPath();g.arc(p.x,p.y,[0,20,40,60,80][s.nz]*(2-s.nzL),0,7);g.stroke()}
+ if(ai){g.fillStyle='#fff';g.font='11px Georgia';g.fillText(gh.st,gh.x-14,gh.y-18)}}
+function loop(ts){const dt=Math.min(.05,(ts-last)/1000||0);last=ts;if(s&&!s.over&&!document.querySelector('.ov.on'))upd(dt);draw();requestAnimationFrame(loop)}
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();if(!K[k]){K[k]=1;if(k==='e'||k==='h')act(k);if(k==='x')tgl()}});addEventListener('keyup',e=>K[e.key.toLowerCase()]=0);
+document.querySelectorAll('#tp button').forEach(b=>{const k=b.dataset.k;b.addEventListener('pointerdown',()=>{K[k]=1;if(k==='e'||k==='h')act(k)});['pointerup','pointerleave'].forEach(v=>b.addEventListener(v,()=>K[k]=0))});
+function tgl(){ai=!ai;$('bAI').textContent='AI view: '+(ai?'on':'off');if(s)sync()}
+$('bStart').onclick=start;$('bAI').onclick=tgl;$('bDash').onclick=dash;
+$('bDemo').onclick=()=>{P.demo=true;P.games+=8;P.esc+=3;P.cap+=5;P.best=Math.max(P.best,142);P.hides.cupboard={n:7,f:2,last:P.games};P.hides.bed={n:2,f:0,last:P.games};P.hides.tub={n:1,f:0,last:P.games};P.rooms.bedroom=(P.rooms.bedroom||0)+9;P.rooms.kitchen=(P.rooms.kitchen||0)+3;P.rooms.storage=(P.rooms.storage||0)+2;P.hist.unshift({k:'DEMO',t:142,pt:'Hider',ad:78,d:'demo'});save();toast('Demo profile loaded (labelled DEMO).');dash()};
+requestAnimationFrame(loop);
+</script></body></html>
